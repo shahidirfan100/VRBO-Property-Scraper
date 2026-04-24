@@ -1,0 +1,63 @@
+{
+  "actorSpecification": 1,
+  "fields": {},
+  "views": {
+    "overview": {
+      "title": "Overview",
+      "transformation": {
+        "fields": [
+          "property_id",
+          "name",
+          "listing_url",
+          "rating_score",
+          "review_count",
+          "neighborhood_name",
+          "available",
+          "source_type",
+          "search_url"
+        ]
+      },
+      "display": {
+        "component": "table",
+        "properties": {
+          "property_id": {
+            "label": "Property ID",
+            "format": "text"
+          },
+          "name": {
+            "label": "Name",
+            "format": "text"
+          },
+          "listing_url": {
+            "label": "Listing URL",
+            "format": "link"
+          },
+          "rating_score": {
+            "label": "Rating",
+            "format": "number"
+          },
+          "review_count": {
+            "label": "Reviews",
+            "format": "number"
+          },
+          "neighborhood_name": {
+            "label": "Neighborhood",
+            "format": "text"
+          },
+          "available": {
+            "label": "Available",
+            "format": "boolean"
+          },
+          "source_type": {
+            "label": "Source",
+            "format": "text"
+          },
+          "search_url": {
+            "label": "Search URL",
+            "format": "link"
+          }
+        }
+      }
+    }
+  }
+}

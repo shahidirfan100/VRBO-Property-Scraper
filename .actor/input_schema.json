@@ -1,0 +1,44 @@
+{
+  "title": "VRBO Property Scraper Input",
+  "description": "API-first VRBO property listings scraper. Provide search/listing URLs or keyword/location.",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "property_listings_urls": {
+      "title": "Property Listings URLs",
+      "type": "array",
+      "description": "One or more VRBO search/listing URLs. Handles messy URLs and query strings.",
+      "editor": "stringList",
+      "items": {
+        "type": "string"
+      }
+    },
+    "results_wanted": {
+      "title": "Results Wanted",
+      "type": "integer",
+      "description": "Maximum listing rows to save.",
+      "minimum": 1,
+      "default": 30,
+      "editor": "number"
+    },
+    "max_pages": {
+      "title": "Max Pages",
+      "type": "integer",
+      "description": "Safety cap for paged API attempts.",
+      "minimum": 1,
+      "default": 5,
+      "editor": "number"
+    },
+    "proxyConfiguration": {
+      "title": "Proxy Configuration",
+      "type": "object",
+      "description": "Use Apify Proxy for anti-blocking hardening. Residential is recommended.",
+      "editor": "proxy",
+      "default": {
+        "useApifyProxy": true
+      }
+    }
+  },
+  "required": [],
+  "additionalProperties": false
+}
