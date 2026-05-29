@@ -30,12 +30,15 @@
       "editor": "number"
     },
     "proxyConfiguration": {
-      "title": "Proxy Configuration",
+      "title": "Proxy configuration",
       "type": "object",
-      "description": "Use Apify Proxy for anti-blocking hardening. Residential is recommended.",
+      "description": "Use Apify Proxy. Residential proxies are recommended for stable results.",
       "editor": "proxy",
       "default": {
-        "useApifyProxy": true
+        "useApifyProxy": true,
+        "apifyProxyGroups": [
+          "RESIDENTIAL"
+        ]
       }
     }
   },

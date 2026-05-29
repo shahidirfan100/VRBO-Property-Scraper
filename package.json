@@ -4,13 +4,13 @@
   "description": "VRBO/Expedia property listings scraper using Firefox-assisted Expedia GraphQL extraction.",
   "type": "module",
   "dependencies": {
-    "apify": "^3.7.0",
-    "crawlee": "^3.15.1",
+    "apify": "^3.7.2",
+    "crawlee": "^3.16.0",
     "got-scraping": "^4.2.1",
     "playwright": "1.59.1"
   },
   "devDependencies": {
-    "@apify/eslint-config": "^1.0.0",
+    "@apify/eslint-config": "^2.0.0",
     "eslint": "^9.29.0",
     "eslint-config-prettier": "^10.1.5",
     "prettier": "^3.5.3",
