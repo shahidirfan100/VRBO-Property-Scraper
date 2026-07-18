@@ -1,44 +1,73 @@
+# API Discovery Report — VRBO Property Listings Scraper
+
 ## Selected API
 
-- Endpoint: `https://www.vrbo.com/graphql`
-- Method: `POST`
-- Auth: No login required, but the search payload needs browser-established cookies and headers
-- Pagination: `variables.criteria.secondary.counts[{ "id": "resultsStartingIndex" }]`
-- Primary operation: `DeferredSearchResults`
-- Persisted query hash: `79d7f75261d4b71439afdd482c474ae0274c2ae9cc0e575cc1fccb54374cb7f6`
-- Fields available: property id, title, listing URL, room/property summary, featured location text, review score, review label, review count, cancellation text, nightly price, total stay price, gallery images, badges, search metadata
-- Fields currently missing in prior actor output: image URL, image count, property type, sleeps, price qualifier, total price, cancellation details, review label, richer listing URL data
-- Field count: 15+ useful listing fields after cleanup
+- **Endpoint:** `https://www.vrbo.com/graphql`
+- **Method:** `POST`
+- **Auth:** None (cookies from warmup HTTP GET + required headers)
+- **Pagination:** `variables.criteria.secondary.counts` with `resultsStartingIndex` offset. Page 0 returns 50 results, subsequent pages increment offset by 50.
+- **Primary operation:** `DeferredSearchResults`
+- **Persisted query hash:** `79d7f75261d4b71439afdd482c474ae0274c2ae9cc0e575cc1fccb54374cb7f6`
+- **Fields available:** property id, title, listing URL, room/property summary, featured location text, review score, review label, review count, cancellation text, nightly price, total stay price, gallery images, badges, search metadata
+- **Fields currently missing in prior actor output:** image URL, image count, property type, sleeps, price qualifier, total price, cancellation details, review label, richer listing URL data
+- **Field count:** 15+ useful listing fields after cleanup
+
+## Header Profile
+
+### Warmup (GET vrbo.com/search)
+```
+user-agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1
+accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
+accept-language: en-US,en;q=0.9
+sec-fetch-site: none
+sec-fetch-mode: navigate
+sec-fetch-user: ?1
+sec-fetch-dest: document
+accept-encoding: gzip, deflate, br
+```
+
+### GraphQL (POST vrbo.com/graphql)
+```
+accept: multipart/mixed;deferSpec=20220824,application/json
+content-type: application/json
+origin: https://www.vrbo.com
+referer: <search-page-url>
+accept-language: en-US,en;q=0.9
+user-agent: Mozilla/5.0 (iPhone; ...) Safari/604.1
+client-info: shopping-pwa,<hash>,us-east-1
+x-page-id: page.Hotel-Search,H,20
+x-parent-brand-id: vrbo (or expedia)
+x-product-line: lodging
+ctx-view-id: <random-uuid>
+cookie: <from-warmup>
+```
 
 ## Why This API Was Selected
 
-- The live VRBO search page loads data from `vrbo.com/graphql` instead of the older Expedia GraphQL endpoint currently used by the actor.
-- The `DeferredSearchResults` response includes full listing cards and supports pagination by offset.
-- The response is stable once a browser session has established the required cookies and request context.
-- The actor can stay mostly HTTP-based after capturing one browser request template.
+- VRBO search page loads data from `vrbo.com/graphql` via `DeferredSearchResults` persisted query.
+- iOS Safari User-Agent passes Akamai checks; desktop Chrome gets 429/Akamai blocked.
+- Warmup via HTTP GET (no Playwright needed) establishes Akamai cookies (bm_sz, tpid, etc.).
+- GraphQL POST with same cookies + iOS Safari headers returns multipart JSON with full listing cards.
+- Pagination via offset in `resultsStartingIndex` count field.
+- The actor can stay fully HTTP-based (impit) — no Playwright needed.
 
 ## Rejected Candidates
 
-- `https://www.expedia.com/graphql`
-  - Rejected because it no longer matches the live VRBO search flow for this actor and was producing empty local results.
-- `https://www.uciservice.com/ds/api/v1/toolkit/page.Hotels.Search/...`
-  - Rejected because it is page config and UI metadata, not the main property listing feed.
-- DOM-only extraction
-  - Rejected because the GraphQL payload is richer, cleaner, and easier to deduplicate than scraping rendered cards.
-
-## URLScan / Live Discovery Notes
-
-- URLScan searches for broad `vrbo.com` / `expedia.com` scans were noisy and often showed bot-challenge pages.
-- A live browser session on the exact search URL confirmed the real listing request:
-  - `POST https://www.vrbo.com/graphql`
-  - Operation `DeferredSearchResults`
-  - Page-load query plus offset-based pagination on next page
+| Candidate | Header Profile | Status/Body | Fields | Pagination | Decision |
+|-----------|---------------|-------------|--------|------------|----------|
+| VRBO GraphQL (Desktop Chrome) | Desktop Chrome UA | 429/Akamai | — | — | Rejected |
+| Expedia GraphQL (iOS Safari) | iOS Safari headers | 429 rate-limited | — | — | Rejected |
+| HTML/JSON-LD parsing | — | Only 2 JSON-LD blocks | 0 review fields | None | Rejected |
+| Playwright full browser | Firefox | Works but heavy | 15 fields | Offset | Fallback only |
 
 ## Implementation Notes
 
-- Direct plain HTTP without browser context is unreliable because cookies and request identity are established in the live page session.
-- The working approach is:
-  1. Open the target search page once in Firefox
-  2. Capture the `DeferredSearchResults` request template
-  3. Reuse its cookies, headers, and payload with `gotScraping`
-  4. Page through results by incrementing `resultsStartingIndex`
+- **Warmup:** Fetch property page with iOS Safari headers to get Akamai cookies before GraphQL calls.
+- **Device type:** Always use `DESKTOP` in GraphQL context — `MOBILE` causes validation error.
+- **User-Agent:** iOS Safari UA passes Akamai checks; desktop Chrome gets blocked.
+- **Session:** Reuse same proxy session for warmup + GraphQL to maintain cookie consistency.
+- **Rate limiting:** VRBO GraphQL tolerates requests at 2-5s intervals.
+- **Pagination:** Page 0 returns 50 listings. Increment `resultsStartingIndex` by 50 for subsequent pages.
+- **Cookies:** Extracted from `Set-Cookie` response headers after warmup GET.
+- **HTTP client:** `impit` with `browser: 'chrome'` for TLS fingerprint matching + custom iOS Safari headers.
+- **No Playwright needed:** Fully HTTP-based with impit. Browser-free.

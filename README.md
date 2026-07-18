@@ -9,6 +9,8 @@ Extract VRBO vacation rental search results into a clean dataset built for analy
 - **Review and trust signals** — Collect review score, review label, review count, badges, and cancellation messaging.
 - **Media-ready output** — Save direct listing URLs, preview images, and image counts for each result.
 - **Deduplicated dataset** — Filters placeholder cards, repeated properties, and null-heavy records before saving output.
+- **Stealth extraction** — Uses iOS Safari headers and TLS fingerprint matching to bypass Akamai protection without a browser.
+- **No browser dependency** — Fully HTTP-based; no Chrome or Firefox overhead. Faster cold starts and lower memory usage.
 
 ## Use Cases
 
@@ -50,14 +52,14 @@ Each dataset item contains:
 | `property_type` | String | Property category shown in the card summary. |
 | `sleeps` | Number | Guest capacity when available in the listing summary. |
 | `location_text` | String | Area or location label shown in the card. |
-| `review_score` | Number | Numeric review score. |
+| `review_score` | Number | Numeric review score (may be absent for new listings). |
 | `review_label` | String | Review quality label such as `Wonderful` or `Exceptional`. |
 | `review_count` | Number | Number of reviews shown for the listing. |
 | `price_per_night` | Number | Nightly price for the selected stay. |
-| `price_total` | Number | Total displayed price for the stay. |
+| `price_total` | Number | Total displayed price for the stay when shown in card. |
 | `price_qualifier` | String | Pricing context such as stay dates or per-night wording. |
 | `all_fees_included` | Boolean | Whether the card states that all fees are included. |
-| `cancellation_policy` | String | Cancellation message shown in the card. |
+| `cancellation_policy` | String | Cancellation message when shown in the search card. |
 | `free_cancellation` | Boolean | Whether the listing advertises free cancellation. |
 | `image_url` | String | Primary listing image URL. |
 | `image_count` | Number | Number of gallery images available in the card response. |
@@ -188,7 +190,11 @@ Yes. Repeated properties and placeholder cards are filtered before data is writt
 
 ### Why are some fields missing on certain listings?
 
-Not every listing shows the same card details in search results. Fields that are not provided are omitted instead of saved as empty values.
+Not every listing shows the same card details in search results. Fields that are not provided are omitted instead of saved as empty values. For example, new listings may lack review data, and total stay pricing is only shown when the card includes it.
+
+### Does the actor require a browser?
+
+No. The actor uses direct HTTP requests with stealth headers and TLS fingerprint matching. No browser is launched, resulting in faster cold starts and lower memory usage compared to Playwright-based scrapers.
 
 ### Can I scrape more than one page?
 

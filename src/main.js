@@ -2,8 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
 import { Actor, log } from 'apify';
-import { gotScraping } from 'got-scraping';
-import { firefox } from 'playwright';
+import { Impit } from 'impit';
 
 const VRBO_GRAPHQL_URL = 'https://www.vrbo.com/graphql';
 const DEFERRED_SEARCH_RESULTS_HASH = '79d7f75261d4b71439afdd482c474ae0274c2ae9cc0e575cc1fccb54374cb7f6';
@@ -103,7 +102,7 @@ function splitIntoList(value) {
 }
 
 function sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+    return new Promise((resolve) => { setTimeout(resolve, ms); });
 }
 
 function uniqueBy(items, getKey) {
@@ -267,12 +266,46 @@ function toCookieHeader(cookies) {
     return [...map.entries()].map(([name, value]) => `${name}=${value}`).join('; ');
 }
 
-function parseGraphQlBody(bodyText) {
-    try {
-        return JSON.parse(bodyText);
-    } catch {
-        return undefined;
+function getIosSafariHeaders() {
+    return {
+        'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1',
+        accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'accept-language': 'en-US,en;q=0.9',
+        'sec-fetch-site': 'none',
+        'sec-fetch-mode': 'navigate',
+        'sec-fetch-user': '?1',
+        'sec-fetch-dest': 'document',
+        'accept-encoding': 'gzip, deflate, br',
+    };
+}
+
+function parseSetCookieHeaders(response) {
+    const cookies = [];
+    if (typeof response.headers.getSetCookie === 'function') {
+        const setCookieValues = response.headers.getSetCookie();
+        for (const header of setCookieValues) {
+            const parts = header.split(';');
+            const nameValue = parts[0].trim();
+            if (nameValue) cookies.push(nameValue);
+        }
+    } else {
+        const raw = response.headers.get('set-cookie');
+        if (raw) {
+            raw.split(/, (?=[a-zA-Z])/).forEach((part) => {
+                const nameValue = part.split(';')[0].trim();
+                if (nameValue) cookies.push(nameValue);
+            });
+        }
     }
+    return cookies;
+}
+
+function parseCookieStringToObjects(cookieStrings) {
+    return cookieStrings.map((cs) => {
+        const eqIndex = cs.indexOf('=');
+        if (eqIndex === -1) return null;
+        return { name: cs.slice(0, eqIndex), value: cs.slice(eqIndex + 1) };
+    }).filter(Boolean);
 }
 
 function upsertCount(counts, id, value) {
@@ -385,40 +418,22 @@ function buildDeferredSearchPayload({ searchUrl, duaid, searchId, startIndex }) 
     return payload;
 }
 
-function cleanHeaders(rawHeaders, { referer, cookie, userAgent }) {
-    const blocked = new Set([
-        'content-length',
-        'host',
-        'connection',
-        'accept-encoding',
-        'cookie',
-        'origin',
-        'referer',
-        'user-agent',
-    ]);
-
-    const headers = {};
-    for (const [key, value] of Object.entries(rawHeaders ?? {})) {
-        if (!key || value === undefined || value === null) continue;
-        if (blocked.has(key.toLowerCase())) continue;
-        headers[key.toLowerCase()] = String(value);
-    }
-
-    headers.accept = 'multipart/mixed;deferSpec=20220824,application/json';
-    headers['content-type'] = 'application/json';
-    headers.origin = 'https://www.vrbo.com';
-    headers.referer = referer;
-    headers['accept-language'] = headers['accept-language'] ?? 'en-US,en;q=0.9';
-    headers['user-agent'] = userAgent;
-    headers['client-info'] = headers['client-info'] ?? 'shopping-pwa,ea624da1e0c23debcf613a27651fb50f72015e57,us-east-1';
-    headers['x-page-id'] = headers['x-page-id'] ?? 'page.Hotel-Search,H,20';
-    headers['x-hcom-origin-id'] = headers['x-hcom-origin-id'] ?? 'page.Hotel-Search,H,20';
-    headers['x-parent-brand-id'] = headers['x-parent-brand-id'] ?? 'vrbo';
-    headers['x-product-line'] = headers['x-product-line'] ?? 'lodging';
-    headers['ctx-view-id'] = headers['ctx-view-id'] ?? randomUUID();
-    if (cookie) headers.cookie = cookie;
-
-    return headers;
+function buildGraphQlHeaders({ cookieHeader, referer }) {
+    return {
+        accept: 'multipart/mixed;deferSpec=20220824,application/json',
+        'content-type': 'application/json',
+        origin: 'https://www.vrbo.com',
+        referer,
+        'accept-language': 'en-US,en;q=0.9',
+        'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1',
+        'client-info': 'shopping-pwa,ea624da1e0c23debcf613a27651fb50f72015e57,us-east-1',
+        'x-page-id': 'page.Hotel-Search,H,20',
+        'x-hcom-origin-id': 'page.Hotel-Search,H,20',
+        'x-parent-brand-id': 'vrbo',
+        'x-product-line': 'lodging',
+        'ctx-view-id': randomUUID(),
+        ...(cookieHeader ? { cookie: cookieHeader } : {}),
+    };
 }
 
 function parseMultipartJson(text) {
@@ -468,6 +483,7 @@ function extractListingCards(parts) {
         if (!item || typeof item !== 'object') return false;
         if (!item.id) return false;
         if (!item.headingSection?.heading) return false;
+        // eslint-disable-next-line no-underscore-dangle
         if (String(item.__typename ?? '').includes('Placeholder')) return false;
         return true;
     });
@@ -592,50 +608,78 @@ function mapListing(item, meta) {
     return mapped;
 }
 
-async function queryVrboListings({
-    payload,
-    cookieHeader,
-    referer,
-    userAgent,
-    proxyConfiguration,
-    proxySessionId,
-    maxRetries,
-}) {
-    const headers = cleanHeaders({}, {
-        referer,
-        cookie: cookieHeader,
-        userAgent,
-    });
+async function warmupSession({ client, searchUrl, maxRetries }) {
+    const warmupHeaders = getIosSafariHeaders();
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-            const proxyUrl = proxyConfiguration
-                ? await proxyConfiguration.newUrl(proxySessionId)
-                : undefined;
-
-            const response = await gotScraping({
-                url: VRBO_GRAPHQL_URL,
-                method: 'POST',
-                headers,
-                proxyUrl,
-                body: JSON.stringify(payload),
-                responseType: 'text',
-                throwHttpErrors: false,
-                timeout: { request: 45_000 },
-                retry: { limit: 0 },
+            const response = await client.fetch(searchUrl, {
+                headers: warmupHeaders,
             });
 
-            const parts = parseMultipartJson(response.body);
-
-            if ((response.statusCode === 429 || response.statusCode >= 500) && attempt < maxRetries) {
+            if (!response.ok && attempt < maxRetries) {
                 const waitMs = Math.min(1000 * 2 ** (attempt - 1), 12_000);
-                log.warning(`GraphQL retry ${attempt}/${maxRetries} due to HTTP ${response.statusCode}.`);
+                log.warning(`Warmup retry ${attempt}/${maxRetries} due to HTTP ${response.status}.`);
+                await sleep(waitMs);
+                continue;
+            }
+
+            const cookieStrings = parseSetCookieHeaders(response);
+            const cookieObjs = parseCookieStringToObjects(cookieStrings);
+            const cookieHeader = toCookieHeader(cookieObjs);
+
+            const duaid = cookieObjs.find((c) => c.name === 'DUAID' || c.name === 'hav')?.value
+                ?? randomUUID();
+
+            return {
+                cookieHeader,
+                duaid,
+                success: response.ok,
+            };
+        } catch (error) {
+            if (attempt >= maxRetries) {
+                log.warning(`Warmup failed after ${maxRetries} retries: ${error.message}`);
+                return { cookieHeader: '', duaid: randomUUID(), success: false };
+            }
+
+            const waitMs = Math.min(1000 * 2 ** (attempt - 1), 12_000);
+            log.warning(`Warmup retry ${attempt}/${maxRetries} failed: ${error.message}`);
+            await sleep(waitMs);
+        }
+    }
+
+    return { cookieHeader: '', duaid: randomUUID(), success: false };
+}
+
+async function queryVrboListings({
+    client,
+    payload,
+    cookieHeader,
+    referer,
+    maxRetries,
+}) {
+    const headers = buildGraphQlHeaders({ cookieHeader, referer });
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            const response = await client.fetch(VRBO_GRAPHQL_URL, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(payload),
+            });
+
+            const bodyText = await response.text();
+            const parts = parseMultipartJson(bodyText);
+
+            if ((response.status === 429 || response.status >= 500) && attempt < maxRetries) {
+                const waitMs = Math.min(1000 * 2 ** (attempt - 1), 12_000);
+                log.warning(`GraphQL retry ${attempt}/${maxRetries} due to HTTP ${response.status}.`);
                 await sleep(waitMs);
                 continue;
             }
 
             return {
-                statusCode: response.statusCode,
+                statusCode: response.status,
                 parts,
             };
         } catch (error) {
@@ -664,21 +708,6 @@ async function pushInBatches(items, batchSize = DEFAULT_BATCH_SIZE) {
     const safeBatchSize = toPositiveInt(batchSize, DEFAULT_BATCH_SIZE);
     for (let index = 0; index < items.length; index += safeBatchSize) {
         await Actor.pushData(items.slice(index, index + safeBatchSize));
-    }
-}
-
-function proxyUrlToLaunchOptions(proxyUrl) {
-    if (!proxyUrl) return undefined;
-
-    try {
-        const parsed = new URL(proxyUrl);
-        return {
-            server: `${parsed.protocol}//${parsed.host}`,
-            username: parsed.username || undefined,
-            password: parsed.password || undefined,
-        };
-    } catch {
-        return undefined;
     }
 }
 
@@ -713,105 +742,94 @@ try {
 
         const meta = targets[index];
         const proxySessionId = `vrbo_${index + 1}_${randomUUID().replace(/-/g, '')}`;
-        const browserProxyUrl = proxyConfiguration
+        const proxyUrl = proxyConfiguration
             ? await proxyConfiguration.newUrl(proxySessionId)
             : undefined;
 
-        log.info(`Handling search page ${meta.searchUrl}`);
-
-        const browser = await firefox.launch({
-            headless: true,
-            proxy: proxyUrlToLaunchOptions(browserProxyUrl),
+        const client = new Impit({
+            browser: 'chrome',
+            ignoreTlsErrors: true,
+            ...(proxyUrl && { proxyUrl }),
         });
 
-        try {
-            const page = await browser.newPage();
+        log.info(`Handling search page ${meta.searchUrl}`);
 
-            await page.route('**/*', (route) => {
-                const type = route.request().resourceType();
-                if (type === 'image' || type === 'font' || type === 'media') {
-                    return route.abort();
-                }
-                return route.continue();
+        const warmupResult = await warmupSession({
+            client,
+            searchUrl: meta.searchUrl,
+            maxRetries,
+        });
+
+        if (!warmupResult.success) {
+            log.warning(`Warmup failed for ${meta.searchUrl}, proceeding with random duaid.`);
+        }
+
+        const { cookieHeader, duaid } = warmupResult;
+        const searchId = randomUUID();
+        const currency = 'USD';
+
+        let emptyPageStreak = 0;
+
+        for (let pageNumber = 1; pageNumber <= maxPages; pageNumber++) {
+            if (allRows.length >= resultsWanted) break;
+
+            const startIndex = (pageNumber - 1) * resultsSize;
+            const payload = buildDeferredSearchPayload({
+                searchUrl: meta.searchUrl,
+                duaid,
+                searchId,
+                startIndex,
             });
 
-            await page.goto(meta.searchUrl, { waitUntil: 'domcontentloaded', timeout: 120_000 });
-            await page.waitForTimeout(7_000);
+            const result = await queryVrboListings({
+                client,
+                payload,
+                cookieHeader,
+                referer: meta.searchUrl,
+                maxRetries,
+            });
 
-            const cookies = await page.context().cookies(['https://www.vrbo.com']);
-            const cookieHeader = toCookieHeader(cookies);
-            const userAgent = await page.evaluate(() => navigator.userAgent);
-            const duaid = cookies.find((cookie) => cookie.name === 'DUAID' || cookie.name === 'hav')?.value
-                ?? randomUUID();
-            const searchId = randomUUID();
-            const currency = 'USD';
-
-            let emptyPageStreak = 0;
-
-            for (let pageNumber = 1; pageNumber <= maxPages; pageNumber++) {
-                if (allRows.length >= resultsWanted) break;
-
-                const startIndex = (pageNumber - 1) * resultsSize;
-                const payload = buildDeferredSearchPayload({
-                    searchUrl: meta.searchUrl,
-                    duaid,
-                    searchId,
-                    startIndex,
-                });
-                const result = await queryVrboListings({
-                    payload,
-                    cookieHeader,
-                    referer: meta.searchUrl,
-                    userAgent,
-                    proxyConfiguration,
-                    proxySessionId,
-                    maxRetries,
-                });
-
-                if (result.error) {
-                    log.warning(`GraphQL request failed on page ${pageNumber}: ${result.error}`);
-                }
-
-                const cards = extractListingCards(result.parts);
-                const summary = getSearchSummary(result.parts);
-                if (pageNumber === 1 && summary?.propertyCount) {
-                    log.info(`Search reported ${summary.propertyCount} total properties for ${meta.searchUrl}.`);
-                }
-
-                let addedThisPage = 0;
-
-                for (const card of cards) {
-                    const mapped = mapListing(card, {
-                        inputType: meta.inputType,
-                        searchUrl: meta.searchUrl,
-                        pageNumber,
-                        currency,
-                    });
-                    if (!mapped) continue;
-
-                    const dedupeKey = mapped.property_id ?? mapped.listing_url;
-                    if (!dedupeKey || seen.has(dedupeKey)) continue;
-
-                    seen.add(dedupeKey);
-                    allRows.push(mapped);
-                    addedThisPage++;
-
-                    if (allRows.length >= resultsWanted) break;
-                }
-
-                log.info(`Page ${pageNumber}: kept ${addedThisPage} unique listings from ${cards.length} cards.`);
-
-                if (!addedThisPage) {
-                    emptyPageStreak++;
-                    if (emptyPageStreak >= 2) break;
-                } else {
-                    emptyPageStreak = 0;
-                }
-
-                if (cards.length < resultsSize) break;
+            if (result.error) {
+                log.warning(`GraphQL request failed on page ${pageNumber}: ${result.error}`);
             }
-        } finally {
-            await browser.close();
+
+            const cards = extractListingCards(result.parts);
+            const summary = getSearchSummary(result.parts);
+            if (pageNumber === 1 && summary?.propertyCount) {
+                log.info(`Search reported ${summary.propertyCount} total properties for ${meta.searchUrl}.`);
+            }
+
+            let addedThisPage = 0;
+
+            for (const card of cards) {
+                const mapped = mapListing(card, {
+                    inputType: meta.inputType,
+                    searchUrl: meta.searchUrl,
+                    pageNumber,
+                    currency,
+                });
+                if (!mapped) continue;
+
+                const dedupeKey = mapped.property_id ?? mapped.listing_url;
+                if (!dedupeKey || seen.has(dedupeKey)) continue;
+
+                seen.add(dedupeKey);
+                allRows.push(mapped);
+                addedThisPage++;
+
+                if (allRows.length >= resultsWanted) break;
+            }
+
+            log.info(`Page ${pageNumber}: kept ${addedThisPage} unique listings from ${cards.length} cards.`);
+
+            if (!addedThisPage) {
+                emptyPageStreak++;
+                if (emptyPageStreak >= 2) break;
+            } else {
+                emptyPageStreak = 0;
+            }
+
+            if (cards.length < resultsSize) break;
         }
     }
 
