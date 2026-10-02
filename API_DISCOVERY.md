@@ -127,7 +127,8 @@ price fields populated, and offset pagination working at 0/50/100.
 - **Duaid:** Send a valid UUID in `identity.duaid`; invalid values fail downstream.
 - **Rate limiting:** VRBO GraphQL tolerates requests at 2-5s intervals.
 - **Pagination:** Page 0 returns up to 50 listings. Increment `resultsStartingIndex` by 50 for subsequent pages.
-- **Streaming output:** each page's deduplicated rows (and each property-detail row) are pushed to the dataset as soon as they are mapped, not buffered until the end. Retries rotate the proxy session silently; only a concise retry warning is logged.
+- **Streaming output:** each page's deduplicated rows (and each property-detail row) are pushed to the dataset as soon as they are mapped, not buffered until the end.
+- **Quiet retries:** per-attempt retry/rotation messages are emitted at `debug` level only, so normal logs stay clean. A page that still fails after its attempts is retried at the page level (up to 3 times) before the actor moves on, so transient throttling does not truncate results.
 - **Cookies:** Not required for the GraphQL search; the request is sent without a cookie header.
 - **HTTP client:** `impit` with `browser: 'chrome'` for consistent TLS + browser fingerprint.
 - **Proxy:** Use the Apify `UNBLOCKER` proxy group. During testing the shared `RESIDENTIAL` pool returned repeated 429/403 on the search page, while `UNBLOCKER` stayed stable. The property detail page also works without cookies.

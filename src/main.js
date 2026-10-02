@@ -807,7 +807,7 @@ async function queryVrboListings({
 
             if ((response.status === 429 || response.status >= 500) && attempt < attempts) {
                 const waitMs = Math.min(300 * attempt, 1_500);
-                log.warning(`GraphQL retry ${attempt}/${attempts} due to HTTP ${response.status}.`);
+                log.debug(`GraphQL retry ${attempt}/${attempts} due to HTTP ${response.status}.`);
                 await sleep(waitMs);
                 client = await createClient();
                 continue;
@@ -828,7 +828,7 @@ async function queryVrboListings({
             }
 
             const waitMs = Math.min(300 * attempt, 1_500);
-            log.warning(`GraphQL retry ${attempt}/${attempts} failed: ${error.message}.`);
+            log.debug(`GraphQL retry ${attempt}/${attempts} failed: ${error.message}.`);
             await sleep(waitMs);
             client = await createClient();
         }
@@ -859,7 +859,7 @@ async function fetchPropertyDetail({ createClient, url }) {
 
             if ((response.status === 429 || response.status >= 500) && attempt < attempts) {
                 const waitMs = Math.min(300 * attempt, 1_500);
-                log.warning(`Property detail retry ${attempt}/${attempts} due to HTTP ${response.status}.`);
+                log.debug(`Property detail retry ${attempt}/${attempts} due to HTTP ${response.status}.`);
                 await sleep(waitMs);
                 client = await createClient();
                 continue;
@@ -870,7 +870,7 @@ async function fetchPropertyDetail({ createClient, url }) {
             if (attempt >= attempts) return { statusCode: 0, html: '', error: error.message };
 
             const waitMs = Math.min(300 * attempt, 1_500);
-            log.warning(`Property detail retry ${attempt}/${attempts} failed: ${error.message}.`);
+            log.debug(`Property detail retry ${attempt}/${attempts} failed: ${error.message}.`);
             await sleep(waitMs);
             client = await createClient();
         }
@@ -955,58 +955,65 @@ try {
         for (let pageNumber = 1; pageNumber <= maxPages; pageNumber++) {
             if (savedCount >= resultsWanted) break;
 
-            const startIndex = (pageNumber - 1) * resultsSize;
-            const payload = buildDeferredSearchPayload({
-                searchUrl: meta.searchUrl,
-                duaid,
-                searchId,
-                startIndex,
-            });
+            let pageRows = [];
+            let cards = [];
+            let pageFailed = false;
 
-            const result = await queryVrboListings({
-                createClient,
-                payload,
-                referer: meta.searchUrl,
-            });
-
-            if (result.error) {
-                log.warning(`GraphQL request failed on page ${pageNumber}: ${result.error}`);
-            }
-
-            const cards = extractListingCards(result.parts);
-            const summary = getSearchSummary(result.parts);
-            const propertyCount = getSearchPropertyCount(summary);
-            if (pageNumber === 1 && propertyCount) {
-                log.info(`Search reported ${propertyCount} total properties for ${meta.searchUrl}.`);
-            }
-
-            if (!cards.length && result.hadErrors) {
-                log.warning(`Page ${pageNumber}: search response contained errors and no listings. The persisted query or anti-bot session may have changed.`);
-            }
-
-            const pageRows = [];
-
-            for (const card of cards) {
-                const mapped = mapListing(card, {
-                    inputType: meta.inputType,
+            for (let pageAttempt = 1; pageAttempt <= 3; pageAttempt++) {
+                const startIndex = (pageNumber - 1) * resultsSize;
+                const payload = buildDeferredSearchPayload({
                     searchUrl: meta.searchUrl,
-                    pageNumber,
-                    currency,
+                    duaid,
+                    searchId,
+                    startIndex,
                 });
-                if (!mapped) continue;
 
-                const dedupeKey = mapped.property_id ?? mapped.listing_url;
-                if (!dedupeKey || seen.has(dedupeKey)) continue;
+                const result = await queryVrboListings({
+                    createClient,
+                    payload,
+                    referer: meta.searchUrl,
+                });
 
-                seen.add(dedupeKey);
-                pageRows.push(mapped);
+                cards = extractListingCards(result.parts);
 
-                if (savedCount + pageRows.length >= resultsWanted) break;
+                if (pageNumber === 1 && pageAttempt === 1) {
+                    const propertyCount = getSearchPropertyCount(getSearchSummary(result.parts));
+                    if (propertyCount) {
+                        log.info(`Search reported ${propertyCount} total properties for ${meta.searchUrl}.`);
+                    }
+                }
+
+                pageRows = [];
+
+                for (const card of cards) {
+                    const mapped = mapListing(card, {
+                        inputType: meta.inputType,
+                        searchUrl: meta.searchUrl,
+                        pageNumber,
+                        currency,
+                    });
+                    if (!mapped) continue;
+
+                    const dedupeKey = mapped.property_id ?? mapped.listing_url;
+                    if (!dedupeKey || seen.has(dedupeKey)) continue;
+
+                    seen.add(dedupeKey);
+                    pageRows.push(mapped);
+
+                    if (savedCount + pageRows.length >= resultsWanted) break;
+                }
+
+                pageFailed = Boolean(result.error) || result.hadErrors
+                    || result.statusCode === 429 || result.statusCode >= 500;
+
+                if (pageRows.length || !pageFailed || pageAttempt >= 3) break;
             }
 
             if (pageRows.length) {
                 await pushInBatches(pageRows, DEFAULT_BATCH_SIZE);
                 savedCount += pageRows.length;
+            } else if (pageFailed) {
+                log.warning(`Page ${pageNumber}: no results after retries; continuing.`);
             }
 
             log.info(`Page ${pageNumber}: kept ${pageRows.length} unique listings from ${cards.length} cards.`);
@@ -1018,7 +1025,7 @@ try {
                 emptyPageStreak = 0;
             }
 
-            if (cards.length < resultsSize) break;
+            if (cards.length < resultsSize && !pageFailed) break;
         }
     }
 
