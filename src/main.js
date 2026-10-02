@@ -807,7 +807,7 @@ async function queryVrboListings({
 
             if ((response.status === 429 || response.status >= 500) && attempt < attempts) {
                 const waitMs = Math.min(300 * attempt, 1_500);
-                log.warning(`GraphQL retry ${attempt}/${attempts} due to HTTP ${response.status}; rotating proxy session.`);
+                log.warning(`GraphQL retry ${attempt}/${attempts} due to HTTP ${response.status}.`);
                 await sleep(waitMs);
                 client = await createClient();
                 continue;
@@ -828,7 +828,7 @@ async function queryVrboListings({
             }
 
             const waitMs = Math.min(300 * attempt, 1_500);
-            log.warning(`GraphQL retry ${attempt}/${attempts} failed: ${error.message}; rotating proxy session.`);
+            log.warning(`GraphQL retry ${attempt}/${attempts} failed: ${error.message}.`);
             await sleep(waitMs);
             client = await createClient();
         }
@@ -859,7 +859,7 @@ async function fetchPropertyDetail({ createClient, url }) {
 
             if ((response.status === 429 || response.status >= 500) && attempt < attempts) {
                 const waitMs = Math.min(300 * attempt, 1_500);
-                log.warning(`Property detail retry ${attempt}/${attempts} due to HTTP ${response.status}; rotating proxy session.`);
+                log.warning(`Property detail retry ${attempt}/${attempts} due to HTTP ${response.status}.`);
                 await sleep(waitMs);
                 client = await createClient();
                 continue;
@@ -870,7 +870,7 @@ async function fetchPropertyDetail({ createClient, url }) {
             if (attempt >= attempts) return { statusCode: 0, html: '', error: error.message };
 
             const waitMs = Math.min(300 * attempt, 1_500);
-            log.warning(`Property detail retry ${attempt}/${attempts} failed: ${error.message}; rotating proxy session.`);
+            log.warning(`Property detail retry ${attempt}/${attempts} failed: ${error.message}.`);
             await sleep(waitMs);
             client = await createClient();
         }
@@ -908,11 +908,11 @@ try {
         ? undefined
         : await Actor.createProxyConfiguration(proxyInput);
 
-    const allRows = [];
     const seen = new Set();
+    let savedCount = 0;
 
     for (let index = 0; index < targets.length; index++) {
-        if (allRows.length >= resultsWanted) break;
+        if (savedCount >= resultsWanted) break;
 
         const meta = targets[index];
         const createClient = () => createVrboClient({
@@ -933,7 +933,8 @@ try {
                 const detailKey = record.property_id ?? record.listing_url;
                 if (detailKey && !seen.has(detailKey)) {
                     seen.add(detailKey);
-                    allRows.push(record);
+                    await pushInBatches([record], DEFAULT_BATCH_SIZE);
+                    savedCount++;
                     log.info(`Saved property detail for ${detailKey}.`);
                 }
             } else {
@@ -952,7 +953,7 @@ try {
         let emptyPageStreak = 0;
 
         for (let pageNumber = 1; pageNumber <= maxPages; pageNumber++) {
-            if (allRows.length >= resultsWanted) break;
+            if (savedCount >= resultsWanted) break;
 
             const startIndex = (pageNumber - 1) * resultsSize;
             const payload = buildDeferredSearchPayload({
@@ -983,7 +984,7 @@ try {
                 log.warning(`Page ${pageNumber}: search response contained errors and no listings. The persisted query or anti-bot session may have changed.`);
             }
 
-            let addedThisPage = 0;
+            const pageRows = [];
 
             for (const card of cards) {
                 const mapped = mapListing(card, {
@@ -998,15 +999,19 @@ try {
                 if (!dedupeKey || seen.has(dedupeKey)) continue;
 
                 seen.add(dedupeKey);
-                allRows.push(mapped);
-                addedThisPage++;
+                pageRows.push(mapped);
 
-                if (allRows.length >= resultsWanted) break;
+                if (savedCount + pageRows.length >= resultsWanted) break;
             }
 
-            log.info(`Page ${pageNumber}: kept ${addedThisPage} unique listings from ${cards.length} cards.`);
+            if (pageRows.length) {
+                await pushInBatches(pageRows, DEFAULT_BATCH_SIZE);
+                savedCount += pageRows.length;
+            }
 
-            if (!addedThisPage) {
+            log.info(`Page ${pageNumber}: kept ${pageRows.length} unique listings from ${cards.length} cards.`);
+
+            if (!pageRows.length) {
                 emptyPageStreak++;
                 if (emptyPageStreak >= 2) break;
             } else {
@@ -1017,18 +1022,11 @@ try {
         }
     }
 
-    const finalItems = uniqueBy(allRows, (item) => item.property_id ?? item.listing_url)
-        .slice(0, resultsWanted)
-        .map((item) => deepClean(item))
-        .filter(Boolean);
-
-    if (!finalItems.length) {
+    if (!savedCount) {
         log.warning('No listings were extracted. Use the Unblocker proxy group and verify target dates/location.');
-    } else {
-        await pushInBatches(finalItems, DEFAULT_BATCH_SIZE);
     }
 
-    log.info(`Finished. Extracted ${finalItems.length} listing rows.`);
+    log.info(`Finished. Extracted ${savedCount} listing rows.`);
 } catch (error) {
     failed = true;
     log.exception(error, 'Actor run failed');
