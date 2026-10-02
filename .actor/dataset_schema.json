@@ -7,12 +7,15 @@
       "transformation": {
         "fields": [
           "property_id",
-          "name",
+          "title",
           "listing_url",
-          "rating_score",
+          "property_type",
+          "review_score",
+          "review_label",
           "review_count",
-          "neighborhood_name",
-          "available",
+          "price_per_night",
+          "price_total",
+          "location_text",
           "source_type",
           "search_url"
         ]
@@ -24,29 +27,41 @@
             "label": "Property ID",
             "format": "text"
           },
-          "name": {
-            "label": "Name",
+          "title": {
+            "label": "Title",
             "format": "text"
           },
           "listing_url": {
             "label": "Listing URL",
             "format": "link"
           },
-          "rating_score": {
+          "property_type": {
+            "label": "Property Type",
+            "format": "text"
+          },
+          "review_score": {
             "label": "Rating",
             "format": "number"
+          },
+          "review_label": {
+            "label": "Rating Label",
+            "format": "text"
           },
           "review_count": {
             "label": "Reviews",
             "format": "number"
           },
-          "neighborhood_name": {
-            "label": "Neighborhood",
-            "format": "text"
+          "price_per_night": {
+            "label": "Per Night",
+            "format": "number"
           },
-          "available": {
-            "label": "Available",
-            "format": "boolean"
+          "price_total": {
+            "label": "Total",
+            "format": "number"
+          },
+          "location_text": {
+            "label": "Location",
+            "format": "text"
           },
           "source_type": {
             "label": "Source",

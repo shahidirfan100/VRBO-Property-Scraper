@@ -7,7 +7,7 @@
   "proxyConfiguration": {
     "useApifyProxy": true,
     "apifyProxyGroups": [
-      "RESIDENTIAL"
+      "UNBLOCKER"
     ]
   }
 }

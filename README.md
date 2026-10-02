@@ -21,23 +21,43 @@ The dataset is useful for vacation rental market research, travel planning, comp
 | `title` | String | Listing title shown in the search results. |
 | `listing_url` | String | Direct URL to the property details page. |
 | `property_type` | String | Property category such as hotel, house, or apartment. |
-| `sleeps` | Number | Guest capacity when shown in the listing summary. |
+| `bedrooms` | Number | Number of bedrooms parsed from the listing summary. |
+| `beds` | Number | Number of beds when shown in the listing summary. |
+| `bed_type` | String | Bed type such as Double or King when shown. |
+| `bathrooms` | Number | Number of bathrooms when shown in the listing summary. |
+| `sleeps` | Number | Guest capacity when shown in the listing summary or title. |
 | `location_text` | String | Area, neighborhood, or location label displayed on the listing card. |
+| `description` | String | Property marketing description from the listing page (property URL runs). |
+| `city` | String | Property city (property URL runs). |
+| `state` | String | Property state or region (property URL runs). |
+| `country` | String | Property country (property URL runs). |
+| `latitude` | Number | Property latitude (property URL runs). |
+| `longitude` | Number | Property longitude (property URL runs). |
+| `amenities` | Array | Amenity names listed on the property page. |
+| `highlights` | Array | Short property highlight phrases. |
+| `images` | Array | Gallery image URLs. |
 | `review_score` | Number | Numeric review score when available. |
-| `review_label` | String | Review quality label such as Excellent or Wonderful. |
+| `review_label` | String | Review quality label such as Exceptional or Excellent. |
 | `review_count` | Number | Number of reviews shown for the property. |
+| `review_theme` | String | Review sentiment theme such as positive. |
 | `price_per_night` | Number | Displayed nightly price for the selected stay. |
+| `price_original` | Number | Original nightly price before discount, when shown. |
 | `price_total` | Number | Total stay price when shown in the search result. |
+| `nights` | Number | Number of nights the displayed total covers. |
 | `price_qualifier` | String | Pricing context such as average per night or stay-period messaging. |
 | `all_fees_included` | Boolean | Whether the listing states that all fees are included. |
 | `cancellation_policy` | String | Cancellation terms shown in the search result. |
 | `free_cancellation` | Boolean | Whether free cancellation is advertised. |
 | `image_url` | String | Primary listing image URL. |
 | `image_count` | Number | Number of gallery images available for the listing. |
-| `badge_text` | String | Listing badge such as Premier Host when present. |
+| `badge_text` | String | Primary listing badge such as Premier Host when present. |
+| `badges` | Array | All badge labels such as Premier Host or a discount badge. |
+| `sponsored` | Boolean | Whether the search result was marked as sponsored. |
+| `search_position` | Number | Position of the listing within the search results. |
+| `guest_rating_source` | String | Source of the guest rating such as INTERNAL or EXTERNAL. |
 | `currency` | String | Currency code used for pricing fields. |
 | `search_url` | String | Search URL that produced the record. |
-| `input_type` | String | Whether the target came from a URL or a keyword/location search. |
+| `input_type` | String | Whether the target came from a URL or a location search. |
 | `page_number` | Number | Search results page where the listing was found. |
 | `scraped_at` | String | ISO timestamp for the collection time. |
 
@@ -46,7 +66,7 @@ Optional fields are omitted when VRBO does not display the corresponding informa
 ## How to scrape VRBO data
 
 1. Open VRBO Property Scraper in Apify.
-2. Add a public VRBO search URL, several URLs, or a destination with optional dates and guest count.
+2. Add a public VRBO search URL, one or more property listing URLs, or a destination with optional dates and guest count. Search URLs return result cards; property listing URLs return full property details such as description, amenities, highlights, gallery images, and coordinates.
 3. Set `results_wanted` and `max_pages` to control the collection size.
 4. Run the Actor and review the dataset preview.
 5. Download the results or connect the dataset to an API, webhook, spreadsheet, or automation.
@@ -55,21 +75,16 @@ Optional fields are omitted when VRBO does not display the corresponding informa
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `property_listings_urls` | Array or String | No | `[]` | One or more VRBO search or listing URLs. This is the recommended input for repeatable searches. |
-| `search_urls` | Array or String | No | `[]` | Alternative field for one or more VRBO search URLs. |
-| `url` | String | No | - | Alternative field for a single VRBO URL. |
-| `location` | String | No | - | Destination or area to search when no URL is provided. |
-| `keyword` | String | No | - | Destination or search phrase used when no URL is provided. |
+| `property_listings_urls` | Array or String | No | `[]` | One or more VRBO search or property listing URLs. This is the recommended input for repeatable searches. |
+| `location` | String | No | `Las Vegas, Nevada, United States of America` | Destination or area to search when no URL is provided. |
 | `check_in` | String | No | 30 days from run date | Check-in date in `YYYY-MM-DD` format. |
 | `check_out` | String | No | 33 days from run date | Check-out date in `YYYY-MM-DD` format. |
 | `adults` | Integer | No | `2` | Number of adults for a destination-based search. |
 | `results_wanted` | Integer | No | `30` | Maximum number of unique listings to save. |
 | `max_pages` | Integer | No | `5` | Maximum number of result pages to collect for each target. |
-| `results_size` | Integer | No | `50` | Number of results considered per page, capped at 50. |
-| `max_retries` | Integer | No | `5` | Retry limit for temporary collection failures. |
-| `proxyConfiguration` | Object | No | Apify Proxy | Proxy settings for larger or repeated runs. Residential proxy groups can improve reliability. |
+| `proxyConfiguration` | Object | No | Apify Proxy (Unblocker) | Proxy settings for larger or repeated runs. The Unblocker proxy group is recommended for stable results on protected search pages. |
 
-Use at least one of `property_listings_urls`, `search_urls`, `url`, `location`, or `keyword`. A URL can contain its own destination, dates, and adult count. Separate input values can be used to override those search details.
+`property_listings_urls` and `location` are the search inputs; all other fields are filters or run controls. A URL can contain its own destination, dates, and adult count. `check_in`, `check_out`, and `adults` are filters that override the matching values in a supplied URL, while a supplied URL's own destination takes precedence over `location`. If no search input is provided, the `location` default is used.
 
 ## Output Data
 
@@ -145,7 +160,7 @@ Compare several destinations and collect a larger dataset across up to five page
   "max_pages": 5,
   "proxyConfiguration": {
     "useApifyProxy": true,
-    "apifyProxyGroups": ["RESIDENTIAL"]
+    "apifyProxyGroups": ["UNBLOCKER"]
   }
 }
 ```
@@ -185,7 +200,7 @@ Compare several destinations and collect a larger dataset across up to five page
 - **Use complete search URLs** - Include the destination, check-in date, check-out date, and adult count when those details matter to your analysis.
 - **Start with a small run** - Test with 20 to 30 results and a low page limit before collecting a larger destination dataset.
 - **Keep date ranges consistent** - Use the same stay dates when comparing prices across destinations or scheduled runs.
-- **Use residential proxies for scale** - Residential proxy groups are recommended for larger or repeated runs.
+- **Use the Unblocker proxy group for scale** - The Unblocker proxy group is recommended for larger or repeated runs on protected search pages.
 - **Review optional fields across several records** - New properties may not have reviews, and some search cards may not show total pricing or cancellation text.
 - **Check the dataset preview** - Confirm that the destination and dates are correct before scheduling recurring collection.
 
@@ -207,11 +222,11 @@ The Actor collects up to the `results_wanted` limit, subject to the number of li
 
 ### Can I search by destination instead of providing a URL?
 
-Yes. Provide `location` or `keyword`, and optionally set `check_in`, `check_out`, and `adults`. For the most predictable search context, use a complete VRBO search URL.
+Yes. Provide `location`, and optionally set `check_in`, `check_out`, and `adults`. For the most predictable search context, use a complete VRBO search URL.
 
 ### Can I process multiple VRBO searches in one run?
 
-Yes. Add multiple values to `property_listings_urls` or `search_urls`. The Actor removes duplicate properties across targets before saving the final dataset.
+Yes. Add multiple values to `property_listings_urls`. The Actor removes duplicate properties across targets before saving the final dataset.
 
 ### Why are some fields missing?
 

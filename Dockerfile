@@ -5,7 +5,7 @@ COPY --chown=myuser:myuser package*.json ./
 # impit's native binary ships via napi-rs optionalDependencies.
 # Do NOT use --omit=optional here — it silently skips the binary.
 RUN npm --quiet set progress=false \
-    && npm install --omit=dev \
+    && npm install --omit=dev --legacy-peer-deps --no-audit --no-fund \
     && echo "Installed NPM packages:" \
     && (npm list --omit=dev --all || true) \
     && echo "Node.js version:" \

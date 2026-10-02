@@ -1,7 +1,7 @@
 {
   "name": "vrbo-property-scraper",
   "version": "1.0",
-  "description": "VRBO/Expedia property listings scraper using Firefox-assisted Expedia GraphQL extraction.",
+  "description": "VRBO vacation rental property listings scraper.",
   "type": "module",
   "dependencies": {
     "apify": "^3.7.2",
@@ -12,8 +12,7 @@
     "@apify/eslint-config": "^2.0.0",
     "eslint": "^9.29.0",
     "eslint-config-prettier": "^10.1.5",
-    "prettier": "^3.5.3",
-    "vitest": "^4.1.0"
+    "prettier": "^3.5.3"
   },
   "scripts": {
     "start": "node src/main.js",

@@ -1,17 +1,44 @@
 {
   "title": "VRBO Property Scraper Input",
-  "description": "API-first VRBO property listings scraper. Provide search/listing URLs or keyword/location.",
+  "description": "API-first VRBO property listings scraper. Provide search/listing URLs or a location.",
   "type": "object",
   "schemaVersion": 1,
   "properties": {
     "property_listings_urls": {
       "title": "Property Listings URLs",
       "type": "array",
-      "description": "One or more VRBO search/listing URLs. Handles messy URLs and query strings.",
+      "description": "One or more VRBO search or property listing URLs. Handles messy URLs and query strings.",
       "editor": "stringList",
       "items": {
         "type": "string"
       }
+    },
+    "location": {
+      "title": "Location",
+      "type": "string",
+      "description": "Destination or area to search when no URL is provided.",
+      "editor": "textfield",
+      "prefill": "Las Vegas, Nevada, United States of America",
+      "default": "Las Vegas, Nevada, United States of America"
+    },
+    "check_in": {
+      "title": "Check-in Date",
+      "type": "string",
+      "description": "Filter: check-in date in YYYY-MM-DD format. Overrides the date in a supplied URL.",
+      "editor": "textfield"
+    },
+    "check_out": {
+      "title": "Check-out Date",
+      "type": "string",
+      "description": "Filter: check-out date in YYYY-MM-DD format. Overrides the date in a supplied URL.",
+      "editor": "textfield"
+    },
+    "adults": {
+      "title": "Adults",
+      "type": "integer",
+      "description": "Filter: number of adults. Overrides the guest count in a supplied URL.",
+      "minimum": 1,
+      "editor": "number"
     },
     "results_wanted": {
       "title": "Results Wanted",
@@ -32,12 +59,12 @@
     "proxyConfiguration": {
       "title": "Proxy configuration",
       "type": "object",
-      "description": "Use Apify Proxy. Residential proxies are recommended for stable results.",
+      "description": "Use Apify Proxy. The Unblocker group is recommended for stable results on protected search pages.",
       "editor": "proxy",
       "default": {
         "useApifyProxy": true,
         "apifyProxyGroups": [
-          "RESIDENTIAL"
+          "UNBLOCKER"
         ]
       }
     }
